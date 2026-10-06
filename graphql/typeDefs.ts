@@ -1,0 +1,75 @@
+export const typeDefs = /* GraphQL */ `
+"A person who owns projects."
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  createdAt: String!
+}
+
+"A deployable project."
+type Project {
+  id: ID!
+  name: String!
+  slug: String!
+  createdAt: String!
+  "The user who owns the project."
+  owner: User!
+  "Deployments for this project, newest first."
+  deployments(first: Int = 20, after: String): DeploymentConnection!
+}
+
+enum DeploymentStatus {
+  QUEUED
+  BUILDING
+  READY
+  FAILED
+}
+
+"A single build and release of a project."
+type Deployment {
+  id: ID!
+  status: DeploymentStatus!
+  branch: String!
+  commit: String!
+  createdAt: String!
+  "The project this deployment belongs to."
+  project: Project!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type ProjectEdge {
+  cursor: String!
+  node: Project!
+}
+
+type ProjectConnection {
+  edges: [ProjectEdge!]!
+  pageInfo: PageInfo!
+}
+
+type DeploymentEdge {
+  cursor: String!
+  node: Deployment!
+}
+
+type DeploymentConnection {
+  edges: [DeploymentEdge!]!
+  pageInfo: PageInfo!
+}
+
+type Query {
+  "Fetch a project by id."
+  project(id: ID!): Project
+  "List projects, newest first."
+  projects(first: Int = 20, after: String): ProjectConnection!
+  "Fetch a user by id."
+  user(id: ID!): User
+  "Fetch a deployment by id."
+  deployment(id: ID!): Deployment
+}
+`;

@@ -1,0 +1,57 @@
+# Prism API on Kubernetes. Apply with: kubectl apply -f k8s/
+# Create the secret first:
+#   kubectl create secret generic prism-secrets \
+#     --from-literal=DATABASE_URL=postgres://... \
+#     --from-literal=SESSION_SECRET=$(openssl rand -hex 32) \
+#     --from-literal=ADMIN_TOKEN=$(openssl rand -hex 32)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prism-api
+  labels: { app: prism-api }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: prism-api }
+  template:
+    metadata:
+      labels: { app: prism-api }
+    spec:
+      containers:
+        - name: prism-api
+          image: ghcr.io/your-org/prism-api:latest
+          ports: [{ containerPort: 3000 }]
+          env:
+            - { name: PRISM_PUBLIC_URL, value: "https://api.example.com" }
+          envFrom:
+            - secretRef: { name: prism-secrets }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prism-api
+spec:
+  selector: { app: prism-api }
+  ports: [{ port: 80, targetPort: 3000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prism-api
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: prism-api }
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }

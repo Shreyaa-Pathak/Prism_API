@@ -1,0 +1,33 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: PostgreSQL and HTTP isolation tests (disposable local cluster)
+        run: npm test
+      - name: Block breaking schema changes
+        run: |
+          if [ -n "$PRISM_URL" ]; then
+            export OBSERVED_OPERATIONS_URL="${PRISM_URL%/}/api/internal/observed-operations"
+          fi
+          npm run schema:check
+        env:
+          PRISM_URL: ${{ vars.PRISM_URL }}
+          ADMIN_TOKEN: ${{ secrets.PRISM_ADMIN_TOKEN }}
+      - name: Generated SDK must be committed and current
+        run: npm run sdk:generate && git diff --exit-code sdk/
+        env:
+          PRISM_PUBLIC_URL: https://api.example.com
+      - run: npm run build
+      - run: npm audit --omit=dev

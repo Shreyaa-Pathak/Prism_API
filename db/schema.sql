@@ -1,0 +1,2 @@
+-- Versioned schema lives in db/migrations. Run npm run db:migrate.
+-- Migration setup deliberately does not insert development data.
