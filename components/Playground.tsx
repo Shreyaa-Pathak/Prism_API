@@ -29,7 +29,12 @@ interface Run {
 }
 
 export function Playground({ sdl }: { sdl: string }) {
-  const { demo, key, setKey } = useSandbox();
+  const { demo, key, setKey, start, loading } = useSandbox();
+  // Read the platform after mount so server and client render the same label first.
+  const [shortcut, setShortcut] = useState("Ctrl ↵");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcut("⌘↵");
+  }, []);
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [variables, setVariables] = useState('{ "first": 10 }');
   const [batching, setBatching] = useState(true);
@@ -174,6 +179,7 @@ export function Playground({ sdl }: { sdl: string }) {
               value={requestKey}
               readOnly={!!demo}
               onChange={(e) => setKey(e.target.value)}
+              placeholder="Paste a key from your dashboard"
               spellCheck={false}
               autoComplete="off"
               className="block w-full bg-bg px-4 py-3 font-mono text-[13px] outline-none read-only:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
@@ -213,9 +219,24 @@ export function Playground({ sdl }: { sdl: string }) {
               <path d="M3 1.8v8.4L10 6 3 1.8Z" fill="currentColor" />
             </svg>
             {running ? "Running…" : "Run query"}
-            <span className="hidden text-[12px] text-ink-2 sm:inline">⌘↵</span>
+            <span className="hidden text-[12px] text-ink-2 sm:inline">
+              {shortcut}
+            </span>
           </button>
         </div>
+        {!demo && !key.trim() && (
+          <p className="text-right text-[13px] text-muted">
+            No key yet?{" "}
+            <button
+              type="button"
+              onClick={() => void start()}
+              disabled={loading}
+              className="font-medium text-ink underline decoration-line-dark underline-offset-4 hover:decoration-ink disabled:opacity-60"
+            >
+              {loading ? "Loading sandbox…" : "Try it with the sandbox"}
+            </button>
+          </p>
+        )}
       </div>
 
       <div
@@ -251,8 +272,12 @@ export function Playground({ sdl }: { sdl: string }) {
           {run ? (
             <CodeLines code={run.body} />
           ) : (
-            <span className="text-muted">
-              Run the query to see the response.
+            <span className="block max-w-[52ch] whitespace-normal font-sans text-[14px] leading-relaxed text-muted">
+              Run the query to see the response here.
+              <br />
+              Then turn DataLoader batching off and run it again: the{" "}
+              <span className="text-ink">DB queries</span> count shows the N+1
+              problem batching removes.
             </span>
           )}
         </pre>

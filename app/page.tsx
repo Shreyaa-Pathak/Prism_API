@@ -24,7 +24,7 @@ export default async function Home() {
             scraping the dashboard. The request on the right runs against this
             server.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link
               href="/demo"
               className="inline-flex min-h-12 items-center rounded-[12px] bg-ink px-5 text-[15px] font-medium text-surface transition-colors hover:bg-ink-2"
@@ -33,15 +33,15 @@ export default async function Home() {
             </Link>
             <Link
               href="/dashboard"
-              className="inline-flex min-h-12 items-center rounded-[12px] border border-accent bg-accent px-5 text-[15px] font-medium transition-colors hover:border-ink"
+              className="inline-flex min-h-12 items-center rounded-[12px] border border-line bg-surface px-5 text-[15px] font-medium transition-colors hover:border-ink"
             >
               Create an API key
             </Link>
             <Link
               href="/docs"
-              className="inline-flex min-h-12 items-center rounded-[12px] border border-line bg-surface px-5 text-[15px] font-medium transition-colors hover:border-ink"
+              className="inline-flex min-h-12 items-center gap-1.5 px-2 text-[15px] font-medium text-ink-2 underline-offset-4 transition-colors hover:text-ink hover:underline"
             >
-              Read the docs
+              Read the docs <span aria-hidden>→</span>
             </Link>
           </div>
         </div>

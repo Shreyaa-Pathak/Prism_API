@@ -8,6 +8,7 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".next-test/**",
       "node_modules/**",
       ".test-postgres/**",
       "next-env.d.ts",

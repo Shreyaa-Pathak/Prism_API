@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { resolve, sep } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -46,6 +46,14 @@ let keyA: string,
 const password = randomBytes(24).toString("hex");
 const sessionSecret = randomBytes(32).toString("hex");
 const sandboxKey = `prism_sandbox_${randomBytes(24).toString("hex")}`;
+// The test server builds into its own directory so a running `npm run dev` keeps its .next cache.
+// Next rewrites next-env.d.ts to point at that directory; put the committed file back.
+const nextEnv = resolve("next-env.d.ts");
+let nextEnvOriginal: string | undefined;
+async function restoreNextEnv() {
+  if (nextEnvOriginal !== undefined && (await readFile(nextEnv, "utf8")) !== nextEnvOriginal)
+    await writeFile(nextEnv, nextEnvOriginal);
+}
 async function freePort() {
   const s = createServer();
   s.listen(0, "127.0.0.1");
@@ -113,6 +121,7 @@ async function startServer() {
         ADMIN_TOKEN: randomBytes(32).toString("hex"),
         PRISM_SANDBOX_KEY: sandboxKey,
         NEXT_TELEMETRY_DISABLED: "1",
+        PRISM_DIST_DIR: ".next-test",
       },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -139,6 +148,7 @@ async function startServer() {
     200,
     "HTTP server did not become healthy",
   );
+  await restoreNextEnv();
 }
 async function stopServer() {
   if (server && server.exitCode === null) {
@@ -156,6 +166,7 @@ async function stopServer() {
 }
 before(
   async () => {
+    nextEnvOriginal = await readFile(nextEnv, "utf8");
     const pgPort = await freePort(),
       appPort = await freePort();
     await mkdir(".test-postgres", { recursive: true });
@@ -259,6 +270,7 @@ before(
 after(
   async () => {
     await stopServer();
+    await restoreNextEnv();
     if (store) await store.close();
     if (pool) await pool.end();
     if (pg) await pg.stop();

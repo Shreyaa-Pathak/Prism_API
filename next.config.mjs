@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The test suite builds into its own directory so it never clobbers a running `npm run dev`.
+  distDir: process.env.PRISM_DIST_DIR || ".next",
   reactStrictMode: true,
   output: "standalone",
   serverExternalPackages: ["pg"],

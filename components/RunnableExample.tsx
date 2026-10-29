@@ -44,7 +44,7 @@ export function RunnableExample({
   sdk,
   origin,
 }: Props) {
-  const { demo, key, setKey } = useSandbox();
+  const { demo, key, setKey, start, loading } = useSandbox();
   const [tab, setTab] = useState<"curl" | "sdk">("curl");
   const [currentPath, setCurrentPath] = useState(path);
   const [state, setState] = useState<
@@ -216,6 +216,20 @@ export function RunnableExample({
       </pre>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+        {auth && !demo && !key.trim() && state === "idle" ? (
+          <span className="text-[13px] text-muted">
+            No key yet?{" "}
+            <button
+              type="button"
+              onClick={() => void start()}
+              disabled={loading}
+              className="font-medium text-ink underline decoration-line-dark underline-offset-4 hover:decoration-ink disabled:opacity-60"
+            >
+              {loading ? "Loading sandbox…" : "Try it with the sandbox"}
+            </button>{" "}
+            or paste one above.
+          </span>
+        ) : (
         <span className="text-[13px] text-muted">
           {state === "running"
             ? "Running…"
@@ -229,6 +243,7 @@ export function RunnableExample({
                   ? demo ? "Runs against public sample data" : "Runs against your workspace with your API key"
                   : "Runs without a key"}
         </span>
+        )}
         <div className="flex gap-2">
           {nextCursor && state === "done" && (
             <button

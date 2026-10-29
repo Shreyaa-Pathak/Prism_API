@@ -11,6 +11,7 @@ import { MAX_PAGE } from "@/graphql/pagination";
 import { MAX_DEPTH } from "@/graphql/execute";
 import { getOrigin } from "@/lib/origin";
 import { SandboxControls } from "@/components/Sandbox";
+import { DocsNav } from "@/components/DocsNav";
 
 export const metadata: Metadata = { title: "Docs" };
 export const dynamic = "force-dynamic";
@@ -61,7 +62,7 @@ function Section({
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="border-t border-line py-12 first:border-t-0 first:pt-0 sm:py-14"
+      className="scroll-mt-24 border-t border-line py-12 first:border-t-0 first:pt-0 sm:py-14"
     >
       <h2
         id={`${id}-title`}
@@ -86,24 +87,7 @@ export default async function Docs() {
   const origin = await getOrigin();
   return (
     <div className="mx-auto grid max-w-page grid-cols-1 gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-16 lg:px-12 lg:py-16">
-      <nav
-        aria-label="Docs"
-        className="min-w-0 lg:sticky lg:top-24 lg:self-start"
-      >
-        <p className="text-[13px] text-muted">Prism API docs</p>
-        <ul className="mt-3 flex gap-1 overflow-x-auto pb-1 text-[14px] lg:flex-col lg:overflow-visible">
-          {sections.map(([id, label]) => (
-            <li key={id} className="shrink-0">
-              <a
-                href={`#${id}`}
-                className="block rounded-[8px] px-3 py-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
-              >
-                {label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <DocsNav sections={sections} />
 
       <div className="min-w-0 max-w-[880px]">
         <SandboxControls />

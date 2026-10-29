@@ -73,7 +73,8 @@ export function AccountDashboard() {
   if (loading) return <p className="mt-8 text-muted">Loading account…</p>;
   if (!identity)
     return (
-      <section className="mt-8 max-w-lg rounded-[24px] border border-line bg-surface p-7">
+      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <section className="rounded-[24px] border border-line bg-surface p-6 sm:p-8 lg:col-span-6 xl:col-span-5">
         <h2 className="text-2xl font-medium">
           {register ? "Create your workspace" : "Sign in to Prism"}
         </h2>
@@ -121,7 +122,7 @@ export function AccountDashboard() {
           )}
           <button
             disabled={busy}
-            className="rounded-lg bg-ink px-4 py-3 text-surface disabled:opacity-60"
+            className="min-h-11 w-full rounded-[10px] bg-ink px-4 text-[15px] font-medium text-surface transition-colors hover:bg-ink-2 disabled:opacity-60 sm:w-auto"
           >
             {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
           </button>
@@ -138,6 +139,39 @@ export function AccountDashboard() {
             : "New to Prism? Create an account"}
         </button>
       </section>
+      <aside
+        aria-label="What you get"
+        className="rounded-[24px] bg-accent-light p-6 sm:p-8 lg:col-span-6 xl:col-span-7"
+      >
+        <h2 className="text-[1.375rem] font-medium tracking-[-0.02em]">
+          From sign-up to first request in a minute
+        </h2>
+        <ol className="mt-6 space-y-5">
+          {[
+            ["Create your workspace", "Every account starts with its own private, empty workspace."],
+            ["Add a project and an API key", "Keys are shown once and stored only as a hash. Up to 5 active keys."],
+            ["Call the API", "Use REST, GraphQL or the generated TypeScript SDK, then watch usage and rate limits here."],
+          ].map(([title, body], i) => (
+            <li key={title} className="flex gap-4">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface font-mono text-[13px] font-medium text-accent-ink">
+                {i + 1}
+              </span>
+              <div>
+                <p className="font-medium">{title}</p>
+                <p className="mt-1 text-[15px] leading-relaxed text-ink-2">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-7 border-t border-accent-soft pt-5 text-[14px] text-ink-2">
+          Just looking?{" "}
+          <a href="/demo" className="font-medium text-ink underline underline-offset-4">
+            Try the public sandbox
+          </a>{" "}
+          without an account.
+        </p>
+      </aside>
+      </div>
     );
   return (
     <>
