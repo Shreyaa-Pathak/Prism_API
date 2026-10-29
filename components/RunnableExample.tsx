@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CodeLines } from "./CodeLines";
 import { sandboxPath, useSandbox } from "./Sandbox";
 
@@ -44,24 +44,21 @@ export function RunnableExample({
   sdk,
   origin,
 }: Props) {
-  const { demo, stop } = useSandbox();
-  const [key, setKey] = useState("");
-  useEffect(() => {
-    try {
-      setKey(sessionStorage.getItem("prism:lastKey") ?? "");
-    } catch {}
-  }, []);
+  const { demo, key, setKey } = useSandbox();
   const [tab, setTab] = useState<"curl" | "sdk">("curl");
   const [currentPath, setCurrentPath] = useState(path);
-  const [state, setState] = useState<"idle" | "running" | "done" | "error">(
-    "idle",
-  );
+  const [state, setState] = useState<
+    "idle" | "running" | "done" | "error" | "invalid"
+  >("idle");
   const [result, setResult] = useState<Result | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // Bumped on every run and mode switch; responses from an older run are dropped.
+  const runId = useRef(0);
   const requestPath = sandboxPath(currentPath, demo);
   const requestKey = demo?.key ?? key;
   const displaySdk = sdk ? sandboxPath(sdk, demo).replaceAll(API_KEY_PLACEHOLDER, demo?.key ?? API_KEY_PLACEHOLDER) : undefined;
   useEffect(() => {
+    runId.current++;
     setCurrentPath(path);
     setNextCursor(null);
     setResult(null);
@@ -80,11 +77,6 @@ export function RunnableExample({
   ].join(" \\\n");
 
   async function call(p: string) {
-    // Never send a pasted key to an arbitrary URL through the editable example path.
-    if (!p.startsWith("/v1/") && p !== "/graphql")
-      throw new Error("Use a Prism API path.");
-    if (p.includes("\\") || p.startsWith("//"))
-      throw new Error("Use a Prism API path.");
     const t0 = performance.now();
     const res = await fetch(p, {
       method,
@@ -99,15 +91,26 @@ export function RunnableExample({
   }
 
   async function run(p = requestPath) {
+    // Never send a pasted key to an arbitrary URL through the editable example path.
+    if (
+      (!p.startsWith("/v1/") && p !== "/graphql") ||
+      p.includes("\\") ||
+      p.startsWith("//")
+    ) {
+      setResult(null);
+      return setState("invalid");
+    }
+    const id = ++runId.current;
     setState("running");
     try {
       const statuses: number[] = [];
       let last = await call(p);
       statuses.push(last.res.status);
-      for (let i = 1; i < (burst ?? 1); i++) {
+      for (let i = 1; i < (burst ?? 1) && id === runId.current; i++) {
         last = await call(p);
         statuses.push(last.res.status);
       }
+      if (id !== runId.current) return;
       let pretty = last.text;
       let cursor: string | null = null;
       try {
@@ -131,7 +134,7 @@ export function RunnableExample({
       });
       setState("done");
     } catch {
-      setState("error");
+      if (id === runId.current) setState("error");
     }
   }
 
@@ -184,11 +187,17 @@ export function RunnableExample({
               type="password"
               autoComplete="off"
               value={requestKey}
-              onChange={(e) => { if (demo) stop(); setKey(e.target.value); }}
+              readOnly={!!demo}
+              onChange={(e) => setKey(e.target.value)}
               placeholder="Paste a key from your dashboard"
-              className="mt-1 block w-full rounded-lg border border-line bg-bg p-2 font-mono text-xs"
+              className="mt-1 block w-full rounded-lg border border-line bg-bg p-2 font-mono text-xs read-only:text-muted"
             />
           </label>
+          {demo && (
+            <p className="text-[12.5px] text-muted">
+              Choose “Use my own key” above to switch back to your key.
+            </p>
+          )}
           <label className="block">
             Request path
             <input
@@ -212,7 +221,9 @@ export function RunnableExample({
             ? "Running…"
             : state === "error"
               ? "Network error. Is the server running?"
-              : result
+              : state === "invalid"
+                ? "Use a Prism API path (/v1/… or /graphql)."
+                : result
                 ? `${result.status} in ${result.ms} ms`
                 : auth
                   ? demo ? "Runs against public sample data" : "Runs against your workspace with your API key"

@@ -4,8 +4,10 @@ import { getStore } from "@/lib/store";
 import {
   endSession,
   getIdentity,
+  rememberDevice,
   sessionHash,
   startSession,
+  trustedDevice,
 } from "@/lib/session";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { sameOrigin } from "@/lib/dashboard-api";
@@ -74,16 +76,25 @@ export async function POST(
     }
     const store = getStore();
     // A per-email throttle survives restarts. A shared throttle bounds new-account abuse
-    // without trusting spoofable forwarding/IP headers from an unknown proxy.
+    // without trusting spoofable forwarding/IP headers from an unknown proxy. A browser
+    // that previously signed in to this account is throttled on its own, so neither
+    // bucket can be drained by someone else to lock the owner out.
     const id = createHash("sha256").update(email).digest("hex");
-    const globalLimit = await store.limits.take("auth:global", 100, 1);
-    if (!globalLimit.allowed)
-      return json(
-        429,
-        apiError("rate_limited", "Too many attempts. Try again later."),
-        { "retry-after": String(globalLimit.retryAfter) },
-      );
-    const limit = await store.limits.take(`auth:${id}`, 5, 1 / 60);
+    const device = action === "login" ? await trustedDevice(email) : null;
+    if (!device) {
+      const globalLimit = await store.limits.take("auth:global", 100, 1);
+      if (!globalLimit.allowed)
+        return json(
+          429,
+          apiError("rate_limited", "Too many attempts. Try again later."),
+          { "retry-after": String(globalLimit.retryAfter) },
+        );
+    }
+    const limit = await store.limits.take(
+      device ? `auth:device:${device}` : `auth:${id}`,
+      5,
+      1 / 60,
+    );
     if (!limit.allowed)
       return json(
         429,
@@ -97,6 +108,7 @@ export async function POST(
         await hashPassword(password),
       );
       await startSession(identity.userId);
+      await rememberDevice(email);
       return json(201, { identity }, { "cache-control": "no-store" });
     }
     const user = await store.identity.credentials(email);
@@ -110,6 +122,7 @@ export async function POST(
         apiError("invalid_credentials", "Email or password is incorrect."),
       );
     await startSession(user.id);
+    await rememberDevice(email);
     return json(
       200,
       { identity: await getIdentity() },

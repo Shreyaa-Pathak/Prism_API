@@ -4,7 +4,7 @@ import { hashKey } from "../lib/keys";
 import { hashPassword } from "../lib/password";
 
 /** Idempotent and transactional; never adopts an existing ordinary user/workspace. */
-export async function provisionSandbox(pool: Pool, key: string) {
+export async function provisionSandbox(pool: Pool, key: string, { restore = false } = {}) {
   if (key.length < 24 || /[<>]/.test(key)) throw new Error("PRISM_SANDBOX_KEY must contain at least 24 characters without placeholders. It will be public.");
   const client = await pool.connect();
   try {
@@ -29,11 +29,14 @@ export async function provisionSandbox(pool: Pool, key: string) {
       }
     }
     // Re-running rotates the public credential, leaving unrelated keys untouched.
-    await client.query(`insert into api_keys(id,workspace_id,name,prefix,hash,plan)
+    // An operator's revocation is kept unless `restore` is explicitly requested.
+    const { rows } = await client.query(`insert into api_keys(id,workspace_id,name,prefix,hash,plan)
       values('key_prism_sandbox','wsp_prism_sandbox','Public sandbox',$1,$2,'sandbox')
-      on conflict(id) do update set hash=excluded.hash,prefix=excluded.prefix,revoked_at=null
-      where api_keys.workspace_id='wsp_prism_sandbox'`, [key.slice(0, 12), hashKey(key)]);
+      on conflict(id) do update set hash=excluded.hash,prefix=excluded.prefix,
+        revoked_at=case when $3::boolean then null else api_keys.revoked_at end
+      where api_keys.workspace_id='wsp_prism_sandbox' returning revoked_at`, [key.slice(0, 12), hashKey(key), restore]);
     await client.query("commit");
+    return { revoked: rows[0]?.revoked_at != null };
   } catch (error) {
     await client.query("rollback");
     throw error;

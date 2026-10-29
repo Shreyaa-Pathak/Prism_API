@@ -358,7 +358,9 @@ export function createPostgresStore(connectionString: string): PlatformStore {
             params,
           ),
           q(
-            `select date_trunc('hour',at) as hour,count(*) filter(where status<400) as ok,count(*) filter(where status=429) as limited,count(*) filter(where status>=400 and status<>429) as errors from usage_events where ${where} group by 1 order by 1`,
+            // Bucket by UTC epoch hour: date_trunc follows the session time zone, which
+            // misaligns buckets in half-/quarter-hour zones (e.g. Asia/Kathmandu, Asia/Kolkata).
+            `select (floor(extract(epoch from at)/3600)*3600)::bigint as hour,count(*) filter(where status<400) as ok,count(*) filter(where status=429) as limited,count(*) filter(where status>=400 and status<>429) as errors from usage_events where ${where} group by 1 order by 1`,
             params,
           ),
           q(
@@ -381,7 +383,8 @@ export function createPostgresStore(connectionString: string): PlatformStore {
           errors: 0,
         }));
         for (const h of hours) {
-          const target = hourly.find((x) => x.hour === iso(h.hour as Date));
+          const at = new Date(Number(h.hour) * 1000).toISOString();
+          const target = hourly.find((x) => x.hour === at);
           if (target)
             Object.assign(target, {
               ok: Number(h.ok),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSandbox } from "./Sandbox";
 
 interface Key {
   id: string;
@@ -39,13 +40,19 @@ const fmt = (iso: string | null) =>
       })
     : "Never";
 
-export function Dashboard() {
+// Same display prefix as lib/keys.ts, so a stored secret can be matched to its key record.
+const prefixOf = (secret: string) =>
+  `${secret.slice(0, 12)}…${secret.slice(-4)}`;
+
+export function Dashboard({ onSignedOut }: { onSignedOut: () => void }) {
+  const { key: tabKey, setKey: setTabKey, stop: stopSandbox } = useSandbox();
   const [keys, setKeys] = useState<Key[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(
     null,
   );
@@ -53,20 +60,23 @@ export function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [k, u] = await Promise.all([
-        ...["/api/keys", "/api/usage"].map(async (path) => {
+      const [k, u] = await Promise.all(
+        ["/api/keys", "/api/usage"].map(async (path) => {
           const r = await fetch(path);
+          if (r.status === 401) throw new Error("signed_out");
           if (!r.ok) throw new Error("Could not load workspace data.");
           return r.json();
         }),
-      ]);
+      );
       setKeys(k.keys);
       setSummary(u.summary);
       setBuckets(u.buckets);
-    } catch {
-      setError("Could not load your keys. Refresh to try again.");
+      setLoadError(null);
+    } catch (e) {
+      if ((e as Error).message === "signed_out") return onSignedOut();
+      setLoadError("Could not load your keys. Retrying…");
     }
-  }, []);
+  }, [onSignedOut]);
 
   useEffect(() => {
     load();
@@ -74,26 +84,41 @@ export function Dashboard() {
     return () => clearInterval(t);
   }, [load]);
 
+  // A revoked key must not stay in the banner or keep prefilling the examples.
+  useEffect(() => {
+    const revoked = new Set(
+      keys?.filter((k) => k.revokedAt).map((k) => k.prefix),
+    );
+    if (secret && revoked.has(prefixOf(secret.value))) setSecret(null);
+    if (tabKey && revoked.has(prefixOf(tabKey))) setTabKey("");
+  }, [keys, secret, tabKey, setTabKey]);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    if (creating) return;
     setCreating(true);
     setError(null);
-    const res = await fetch("/api/keys", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const body = await res.json();
-    setCreating(false);
-    if (!res.ok)
-      return setError(body.error?.message ?? "Could not create the key.");
-    setSecret({ name: body.key.name, value: body.secret });
-    setCopied(false);
-    setName("");
     try {
-      sessionStorage.setItem("prism:lastKey", body.secret);
-    } catch {}
-    load();
+      const res = await fetch("/api/keys", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body)
+        return setError(body?.error?.message ?? "Could not create the key.");
+      setSecret({ name: body.key.name, value: body.secret });
+      setCopied(false);
+      setName("");
+      // The new key replaces the sandbox, so the examples really use it.
+      setTabKey(body.secret);
+      stopSandbox();
+      load();
+    } catch {
+      setError("Could not reach Prism. Check your connection and try again.");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function revoke(k: Key) {
@@ -103,15 +128,23 @@ export function Dashboard() {
       )
     )
       return;
-    const res = await fetch(`/api/keys/${k.id}`, { method: "DELETE" });
-    if (!res.ok) setError("Could not revoke the key.");
+    try {
+      const res = await fetch(`/api/keys/${k.id}`, { method: "DELETE" });
+      if (!res.ok) setError("Could not revoke the key.");
+    } catch {
+      setError("Could not revoke the key.");
+    }
     load();
   }
 
   async function copy() {
     if (!secret) return;
-    await navigator.clipboard.writeText(secret.value);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(secret.value);
+      setCopied(true);
+    } catch {
+      setError("Could not copy. Select the key and copy it manually.");
+    }
   }
 
   const peak = Math.max(
@@ -157,9 +190,9 @@ export function Dashboard() {
             {creating ? "Creating…" : "Create key"}
           </button>
         </form>
-        {error && (
+        {(error ?? loadError) && (
           <p role="alert" className="mt-3 text-[14px] text-warn">
-            {error}
+            {error ?? loadError}
           </p>
         )}
 
@@ -321,7 +354,7 @@ export function Dashboard() {
                   <div
                     key={h.hour}
                     className="flex h-full flex-1 flex-col justify-end"
-                    title={`${new Date(h.hour).getHours()}:00, ${total} requests`}
+                    title={`${new Date(h.hour).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}, ${total} requests`}
                   >
                     {h.limited > 0 && (
                       <div

@@ -175,5 +175,7 @@ export async function runOperation({
   const body: RunOutput["body"] = { data: result.data ?? null };
   if (result.errors?.length) body.errors = result.errors.map(formatError);
   body.extensions = { dbQueries: ctx.stats.dbQueries, batching: batch };
-  return { status: 200, body, dbQueries: ctx.stats.dbQueries };
+  // No `data` key means the request never executed (e.g. a variable failed coercion): a client error.
+  const status = "data" in result ? 200 : 400;
+  return { status, body, dbQueries: ctx.stats.dbQueries };
 }

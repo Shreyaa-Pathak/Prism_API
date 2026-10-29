@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { getStore } from "./store";
 const COOKIE = "prism_session";
@@ -32,6 +32,34 @@ export async function startSession(userId: string) {
     sameSite: "lax",
     path: "/",
     expires: expiresAt,
+  });
+}
+const DEVICE = "prism_device";
+const deviceMac = (email: string, nonce: string) =>
+  sessionHash(`device:${email}:${nonce}`);
+/**
+ * A browser that already signed in to this account. Its attempts use their own throttle,
+ * so failed guesses by someone else cannot lock the owner out (OWASP device cookies).
+ */
+export async function trustedDevice(email: string): Promise<string | null> {
+  const [nonce, mac] = ((await cookies()).get(DEVICE)?.value ?? "").split(".");
+  if (!/^[a-f0-9]{32}$/.test(nonce ?? "") || !/^[a-f0-9]{64}$/.test(mac ?? ""))
+    return null;
+  return timingSafeEqual(
+    Buffer.from(deviceMac(email, nonce), "hex"),
+    Buffer.from(mac, "hex"),
+  )
+    ? nonce
+    : null;
+}
+export async function rememberDevice(email: string) {
+  const nonce = randomBytes(16).toString("hex");
+  (await cookies()).set(DEVICE, `${nonce}.${deviceMac(email, nonce)}`, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/auth",
+    maxAge: 180 * 86_400,
   });
 }
 export async function endSession() {

@@ -1,11 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Dashboard } from "./Dashboard";
+import { useSandbox } from "./Sandbox";
 import { WorkspacePanel } from "./WorkspacePanel";
 import type { Identity } from "@/lib/store/types";
 
 export function AccountDashboard() {
+  const { setKey, stop } = useSandbox();
   const [identity, setIdentity] = useState<Identity | null>(null);
+  // A key or sandbox from a previous account must not carry over.
+  const resetTab = useCallback(() => {
+    setKey("");
+    stop();
+  }, [setKey, stop]);
+  const signedOut = useCallback(() => {
+    resetTab();
+    setIdentity(null);
+    setError("Your session ended. Sign in again.");
+  }, [resetTab]);
   const [loading, setLoading] = useState(true);
   const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,7 +49,7 @@ export function AccountDashboard() {
       });
       const b = await res.json();
       if (!res.ok) throw new Error(b.error?.message ?? "Could not sign in.");
-      sessionStorage.removeItem("prism:lastKey");
+      resetTab();
       setIdentity(b.identity);
     } catch (e) {
       setError((e as Error).message);
@@ -50,7 +62,7 @@ export function AccountDashboard() {
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (!res.ok) throw new Error("Could not sign out. Try again.");
-      sessionStorage.removeItem("prism:lastKey");
+      resetTab();
       setIdentity(null);
     } catch (e) {
       setError((e as Error).message);
@@ -148,7 +160,7 @@ export function AccountDashboard() {
         )}
       </div>
       <WorkspacePanel />
-      <Dashboard />
+      <Dashboard onSignedOut={signedOut} />
     </>
   );
 }

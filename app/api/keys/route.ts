@@ -21,12 +21,9 @@ export async function POST(req: Request) {
       unknown
     > | null;
     const name = typeof body?.name === "string" ? body.name.trim() : "";
+    // The sandbox plan is reserved for the provisioned public sample key.
     const plan = body?.plan ?? "standard";
-    if (
-      !name ||
-      name.length > 60 ||
-      (plan !== "standard" && plan !== "sandbox")
-    )
+    if (!name || name.length > 60 || plan !== "standard")
       return json(
         400,
         apiError(
@@ -34,7 +31,7 @@ export async function POST(req: Request) {
           "Give the key a name of 1-60 characters and a valid plan.",
         ),
       );
-    const { record, secret } = newKey(identity.workspaceId, name, plan);
+    const { record, secret } = newKey(identity.workspaceId, name);
     await getStore().keys.insert(record);
     const { hash: _, ...key } = record;
     return json(201, { key, secret }, { "cache-control": "no-store" });

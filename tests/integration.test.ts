@@ -732,7 +732,10 @@ test("sandbox demonstrates batching on and off and obeys revocation", async () =
   await store.keys.revoke("wsp_prism_sandbox", "key_prism_sandbox");
   assert.equal((await request("/api/sandbox")).status, 503);
   assert.equal((await request("/v1/projects", { key: sandboxKey })).status, 401);
-  await provisionSandbox(pool, sandboxKey);
+  // Re-provisioning keeps an operator's revocation; only an explicit restore re-enables it.
+  assert.deepEqual(await provisionSandbox(pool, sandboxKey), { revoked: true });
+  assert.equal((await request("/api/sandbox")).status, 503);
+  assert.deepEqual(await provisionSandbox(pool, sandboxKey, { restore: true }), { revoked: false });
   assert.equal((await request("/api/sandbox")).status, 200);
 });
 test("migrations preserve legacy demo records outside active tables", async () => {
@@ -783,6 +786,57 @@ test("developer pages and schema/SDK endpoints remain available", async () => {
   const schema = await readFile("schema.graphql", "utf8");
   assert(schema.includes("type Project"));
   assert(!logs.includes("Module not found"));
+});
+test("someone else's failed sign-ins cannot lock out a browser that signed in before", async () => {
+  const deviceCookie = (res: Response) =>
+    res.headers.getSetCookie().find((c) => c.startsWith("prism_device="))!.split(";")[0];
+  const owner = await request("/api/auth/register", {
+    method: "POST",
+    body: { name: "Lockout", email: "lockout@example.test", password },
+  });
+  assert.equal(owner.status, 201);
+  const device = deviceCookie(owner);
+  for (const email of ["lockout@example.test", "lockout-other@example.test"])
+    for (let i = 0; i < 6; i++)
+      await request("/api/auth/login", {
+        method: "POST",
+        body: { email, password: "incorrect-password" },
+      });
+  const login = (email: string, cookie?: string) =>
+    request("/api/auth/login", { method: "POST", cookie, body: { email, password } });
+  // Unknown browsers stay throttled; the owner's browser is not.
+  assert.equal((await login("lockout@example.test")).status, 429);
+  assert.equal((await login("lockout@example.test", device)).status, 200);
+  // A device cookie is bound to its email and cannot bypass another account's throttle.
+  assert.equal((await login("lockout-other@example.test", device)).status, 429);
+});
+test("out-of-range integers, mistyped variables and sandbox-plan keys are client errors", async () => {
+  for (const first of ["2147483648", "99999999999999999999"])
+    assert.equal((await request(`/v1/projects?first=${first}`, { key: keyA })).status, 400);
+  const res = await request("/graphql", {
+    key: keyA,
+    method: "POST",
+    body: { query: "query($f:Int){projects(first:$f){pageInfo{hasNextPage}}}", variables: { f: "ten" } },
+  });
+  assert.equal(res.status, 400);
+  assert.ok((await res.json()).errors[0].message.includes("$f"));
+  assert.equal(
+    (await request("/api/keys", { cookie: cookieA, method: "POST", body: { name: "Sandbox?", plan: "sandbox" } })).status,
+    400,
+  );
+});
+test("hourly usage buckets align to UTC hours in any database time zone", async () => {
+  // Quarter-hour offset: date_trunc('hour') in this zone never matches a UTC hour.
+  const zoned = createPostgresStore(`${url}?options=${encodeURIComponent("-c timezone=Asia/Kathmandu")}`);
+  try {
+    const now = Date.now();
+    await zoned.usage.record({ keyId: keyIdA, workspaceId: a.workspaceId, at: now, route: "GET /v1/tz", status: 200, latencyMs: 1 });
+    const s = await zoned.usage.summary(a.workspaceId, keyIdA, now - 3_600_000);
+    assert.ok(s.ok > 0);
+    assert.equal(s.hourly.reduce((n, h) => n + h.ok + h.limited + h.errors, 0), s.total);
+  } finally {
+    await zoned.close();
+  }
 });
 test("repeated failed sign-ins are persistently throttled", async () => {
   const statuses: number[] = [];

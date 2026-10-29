@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DeploymentRow, ProjectRow } from "@/lib/store/types";
 const inputClass = "mt-1 block w-full rounded-lg border border-line bg-bg p-3";
 export function WorkspacePanel() {
@@ -10,7 +10,17 @@ export function WorkspacePanel() {
   const [deploymentCursor, setDeploymentCursor] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // The project whose deployments are on screen; responses for any other project are dropped.
+  const selected = useRef("");
+  // Guards "Load more" against double clicks sending the same cursor twice.
+  const pending = useRef({ projects: false, deployments: false });
   const loadProjects = useCallback(async (after?: string) => {
+    if (after && pending.current.projects) return;
+    if (after) {
+      pending.current.projects = true;
+      setLoadingMore(true);
+    }
     try {
       const r = await fetch(
         `/api/workspace${after ? `?after=${encodeURIComponent(after)}` : ""}`,
@@ -21,27 +31,46 @@ export function WorkspacePanel() {
       setProjects((p) => (after ? [...p, ...rows] : rows));
       setProjectCursor(b.pageInfo.hasNextPage ? b.pageInfo.endCursor : null);
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message || "Could not load projects.");
+    } finally {
+      if (after) {
+        pending.current.projects = false;
+        setLoadingMore(false);
+      }
     }
   }, []);
   const loadDeployments = useCallback(async (id: string, after?: string) => {
+    if (after && pending.current.deployments) return;
+    if (after) {
+      pending.current.deployments = true;
+      setLoadingMore(true);
+    }
     try {
       const r = await fetch(
         `/api/workspace?projectId=${encodeURIComponent(id)}${after ? `&after=${encodeURIComponent(after)}` : ""}`,
       );
       const b = await r.json();
+      if (id !== selected.current) return;
       if (!r.ok) throw new Error(b.error?.message);
       const rows = b.edges.map((e: { node: DeploymentRow }) => e.node);
       setDeployments((p) => (after ? [...p, ...rows] : rows));
       setDeploymentCursor(b.pageInfo.hasNextPage ? b.pageInfo.endCursor : null);
     } catch (e) {
-      setError((e as Error).message);
+      if (id === selected.current)
+        setError((e as Error).message || "Could not load deployments.");
+    } finally {
+      if (after) {
+        pending.current.deployments = false;
+        setLoadingMore(false);
+      }
     }
   }, []);
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
   useEffect(() => {
+    selected.current = projectId;
+    pending.current.deployments = false;
     setDeployments([]);
     setDeploymentCursor(null);
     if (projectId) void loadDeployments(projectId);
@@ -143,7 +172,8 @@ export function WorkspacePanel() {
           {projectCursor && (
             <button
               onClick={() => loadProjects(projectCursor)}
-              className="mt-3 underline"
+              disabled={loadingMore}
+              className="mt-3 underline disabled:opacity-60"
             >
               Load more projects
             </button>
@@ -214,7 +244,8 @@ export function WorkspacePanel() {
               {deploymentCursor && (
                 <button
                   onClick={() => loadDeployments(projectId, deploymentCursor)}
-                  className="mt-3 underline"
+                  disabled={loadingMore}
+                  className="mt-3 underline disabled:opacity-60"
                 >
                   Load more deployments
                 </button>

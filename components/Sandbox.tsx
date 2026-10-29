@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SandboxDemo } from "@/lib/sandbox";
 
 const SandboxContext = createContext<{
@@ -9,36 +9,57 @@ const SandboxContext = createContext<{
   error: string | null;
   start: () => Promise<void>;
   stop: () => void;
+  /** The visitor's own key for this tab, shared by every example and the playground. */
+  key: string;
+  setKey: (key: string) => void;
 } | null>(null);
 
 export function SandboxProvider({ children }: { children: ReactNode }) {
   const [demo, setDemo] = useState<SandboxDemo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [key, setKeyState] = useState("");
+  // Each start/stop bumps this, so a slow sandbox response cannot undo a later choice.
+  const attempt = useRef(0);
+  const setKey = useCallback((value: string) => {
+    setKeyState(value);
+    try {
+      if (value) sessionStorage.setItem("prism:lastKey", value);
+      else sessionStorage.removeItem("prism:lastKey");
+    } catch {}
+  }, []);
   const start = useCallback(async () => {
+    const id = ++attempt.current;
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/sandbox", { cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Sandbox unavailable.");
+      const body = await response.json().catch(() => null);
+      if (id !== attempt.current) return;
+      if (!response.ok || !body) throw new Error(body?.error?.message ?? "Sandbox unavailable.");
       setDemo(body);
       try { sessionStorage.setItem("prism:sandbox", "active"); } catch {}
     } catch (error) {
+      if (id !== attempt.current) return;
       setDemo(null);
-      setError(error instanceof Error ? error.message : "Sandbox unavailable.");
+      setError(error instanceof Error && error.message !== "Failed to fetch" ? error.message : "Sandbox unavailable.");
       try { sessionStorage.removeItem("prism:sandbox"); } catch {}
-    } finally { setLoading(false); }
+    } finally { if (id === attempt.current) setLoading(false); }
   }, []);
-  const stop = () => {
+  const stop = useCallback(() => {
+    attempt.current++;
+    setLoading(false);
     setDemo(null);
     setError(null);
     try { sessionStorage.removeItem("prism:sandbox"); } catch {}
-  };
+  }, []);
   useEffect(() => {
-    try { if (sessionStorage.getItem("prism:sandbox") === "active") void start(); } catch {}
+    try {
+      setKeyState(sessionStorage.getItem("prism:lastKey") ?? "");
+      if (sessionStorage.getItem("prism:sandbox") === "active") void start();
+    } catch {}
   }, [start]);
-  return <SandboxContext.Provider value={{ demo, loading, error, start, stop }}>{children}</SandboxContext.Provider>;
+  return <SandboxContext.Provider value={{ demo, loading, error, start, stop, key, setKey }}>{children}</SandboxContext.Provider>;
 }
 
 export function useSandbox() {

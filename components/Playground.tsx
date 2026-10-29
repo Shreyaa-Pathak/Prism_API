@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CodeLines } from "./CodeLines";
 import { useSandbox } from "./Sandbox";
 
@@ -29,26 +29,25 @@ interface Run {
 }
 
 export function Playground({ sdl }: { sdl: string }) {
-  const { demo, stop } = useSandbox();
+  const { demo, key, setKey } = useSandbox();
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [variables, setVariables] = useState('{ "first": 10 }');
-  const [key, setKey] = useState("");
   const [batching, setBatching] = useState(true);
   const [running, setRunning] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
   const [varError, setVarError] = useState<string | null>(null);
   const [showSchema, setShowSchema] = useState(false);
+  // Bumped on every run and mode switch; responses from an older run are dropped.
+  const runId = useRef(0);
   const requestKey = demo?.key ?? key;
-  useEffect(() => { setRun(null); }, [demo]);
-
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem("prism:lastKey");
-      if (saved) setKey(saved);
-    } catch {}
-  }, []);
+    runId.current++;
+    setRun(null);
+    setRunning(false);
+  }, [demo]);
 
   async function execute() {
+    if (running || !requestKey.trim()) return;
     let vars: unknown = undefined;
     if (variables.trim()) {
       try {
@@ -59,6 +58,7 @@ export function Playground({ sdl }: { sdl: string }) {
         return;
       }
     }
+    const id = ++runId.current;
     setRunning(true);
     const t0 = performance.now();
     try {
@@ -72,6 +72,7 @@ export function Playground({ sdl }: { sdl: string }) {
         body: JSON.stringify({ query, variables: vars }),
       });
       const text = await res.text();
+      if (id !== runId.current) return;
       let body = text;
       try {
         body = JSON.stringify(JSON.parse(text), null, 2);
@@ -85,6 +86,7 @@ export function Playground({ sdl }: { sdl: string }) {
         body,
       });
     } catch {
+      if (id !== runId.current) return;
       setRun({
         status: 0,
         ms: 0,
@@ -94,7 +96,7 @@ export function Playground({ sdl }: { sdl: string }) {
         body: "Network error.",
       });
     } finally {
-      setRunning(false);
+      if (id === runId.current) setRunning(false);
     }
   }
 
@@ -170,17 +172,24 @@ export function Playground({ sdl }: { sdl: string }) {
               type="password"
               id="key"
               value={requestKey}
-              onChange={(e) => { if (demo) stop(); setKey(e.target.value); }}
+              readOnly={!!demo}
+              onChange={(e) => setKey(e.target.value)}
               spellCheck={false}
               autoComplete="off"
-              className="block w-full bg-bg px-4 py-3 font-mono text-[13px] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
+              className="block w-full bg-bg px-4 py-3 font-mono text-[13px] outline-none read-only:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
             />
-            <a
-              href="/dashboard"
-              className="block px-4 pb-3 pt-1 text-[13px] text-muted underline"
-            >
-              Create a workspace API key
-            </a>
+            {demo ? (
+              <p className="px-4 pb-3 pt-1 text-[13px] text-muted">
+                Choose “Use my own key” above to switch back to your key.
+              </p>
+            ) : (
+              <a
+                href="/dashboard"
+                className="block px-4 pb-3 pt-1 text-[13px] text-muted underline"
+              >
+                Create a workspace API key
+              </a>
+            )}
           </div>
         </div>
 

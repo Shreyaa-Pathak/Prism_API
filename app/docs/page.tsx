@@ -189,7 +189,7 @@ export default async function Docs() {
             Sandbox keys hold {PLANS.sandbox.capacity} tokens and refill{" "}
             {PLANS.sandbox.refillPerSec} per second. Standard keys hold{" "}
             {PLANS.standard.capacity} and refill {PLANS.standard.refillPerSec}{" "}
-            per second. A burst uses the selected key?s limit:
+            per second. A burst uses the selected key’s limit:
           </p>
           <RunnableExample
             origin={origin}

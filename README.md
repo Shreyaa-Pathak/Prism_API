@@ -1,12 +1,9 @@
 # Prism API
 
-The package and deployment name is `prism-api`.
-
 A persistent, multi-user developer API platform built with Next.js, TypeScript, PostgreSQL, GraphQL, and REST. A single GraphQL schema drives REST routes, interactive documentation, and the generated TypeScript SDK.
 
 Each account starts with its own empty workspace. Dashboard identity comes from a database-backed session; API identity comes from a hashed API key attached to that workspace. Requests require PostgreSQL; private workspaces never fall back to shared sample data.
 
-For a portfolio walkthrough, open `/demo`. It explains pagination, resource lookups, batching, and the shared API contract. The optional sandbox uses a separate, explicitly marked workspace; personal accounts remain empty and isolated.
 
 ## Public sandbox demo
 
@@ -20,17 +17,7 @@ npm run dev
 
 Open `/demo` and click **Try sandbox**. No registration is needed. Docs and the playground use the sample key, and resource examples automatically receive working IDs. Choose **Use my own key** to leave sandbox mode; your personal tab key is not overwritten. Sandbox selection persists in this tab and is revalidated against the server on a reload.
 
-Provisioning creates one dedicated workspace with three projects and nine deployment records. It is transactional and idempotent, does not adopt an ordinary workspace, and creates no usable dashboard login. Re-running with a different key rotates only the sample key. `/api/sandbox` advertises a key only when it belongs to a marked sandbox workspace, has the sandbox plan, is not revoked, and has sample records. Omitting the setting disables discovery. The API still checks revocation on every request. To disable access entirely, revoke `key_prism_sandbox` as well as removing the runtime setting.
-
 Sample reads use the same PostgreSQL repositories, resolvers, authentication, rate limiting, and metering as ordinary reads. Public writes remain disabled. All visitors share a bucket with burst 10 and refill 1/s; 429 responses include `Retry-After`. The public key reveals only synthetic sample data, including an example.test member email. Never add private records to this workspace.
-
-## Portfolio evidence and scope
-
-Prism is a working API platform demonstration, with application-level authentication/rate limiting and direct PostgreSQL access. DataLoader caching lasts for one request. Kubernetes deployment manifests are included; their presence is not evidence of a live Kubernetes deployment. No separate network-edge gateway, distributed resource cache, production traffic volume, developer adoption count, or 42ms p99 is claimed.
-
-The integration suite verifies that the three-project sandbox's nested GraphQL query uses **3 resource queries with batching versus 7 without**. The response's `X-Prism-DB-Queries` counts resource repository calls, excluding authentication, bucket, and telemetry SQL. These are reproducible query counts, not throughput or latency benchmarks. HTTP timings in the UI are measured for individual requests.
-
-For a short walkthrough and deployment steps, see [docs/PORTFOLIO.md](docs/PORTFOLIO.md).
 
 ## Development setup
 
@@ -136,7 +123,7 @@ The key determines ownership; callers do not send a workspace ID. REST reads of 
 
 The public REST and GraphQL schemas remain read-only. Creating projects and recording deployments use authenticated dashboard routes (`POST /api/workspace`, `POST /api/workspace/deployments`). API scopes and public write operations are future work.
 
-Runnable examples use a pasted key or the key just created in this tab. The tab temporarily retains that key in session storage; sign-in and sign-out clear it. A key stored by the caller is still a credential: keep it private. The former fixed public sandbox key no longer works. Individual examples use `YOUR_PROJECT_ID` placeholders; replace them with IDs from the dashboard or list results.
+Runnable examples and the playground share one key: a pasted key or the key just created in this tab (creating a key also leaves sandbox mode). The tab temporarily retains that key in session storage; sign-in, sign-out, and revoking that key clear it. While the sandbox is active its key is shown read-only. A key stored by the caller is still a credential: keep it private. The former fixed public sandbox key no longer works. Individual examples use `YOUR_PROJECT_ID` placeholders; replace them with IDs from the dashboard or list results.
 
 ## Storage and migrations
 
@@ -148,7 +135,9 @@ The first migration preserves existing demo tables as `legacy_demo_*`. Old brows
 
 ## Rate limits and usage
 
-Buckets are stored in PostgreSQL and updated under a row lock using database time. They survive restarts and are shared by all app replicas. Sandbox-plan keys allow a burst of 10 and refill 1/s; standard keys allow 100 and refill 10/s. Revocation is checked on each request. The SDK retries 429 responses using `Retry-After`.
+Buckets are stored in PostgreSQL and updated under a row lock using database time. They survive restarts and are shared by all app replicas. Sandbox-plan keys allow a burst of 10 and refill 1/s; standard keys allow 100 and refill 10/s. Dashboard-created keys are always standard; the sandbox plan is reserved for the provisioned sample key.
+
+Sign-in attempts are limited to 5 per email, refilling 1/minute, plus a shared limit on attempts from unrecognised browsers. A successful sign-in leaves a signed, HttpOnly device cookie for that email; later attempts from that browser use their own limit, so someone else's failed guesses cannot lock the owner out. Revocation is checked on each request. The SDK retries 429 responses using `Retry-After`.
 
 Usage stores workspace/key, normalized route including HTTP method, HTTP status, latency, and timestamp, without request bodies. The dashboard uses SQL aggregates for totals, success/error/429 counts, average latency, p50/p99, hourly activity, top routes, and counts per key. GraphQL errors returned with HTTP 200 count as HTTP success. Authenticated 429 responses are metered; rejected unknown keys are not assigned to a workspace.
 

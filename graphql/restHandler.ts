@@ -28,7 +28,17 @@ export async function executeRest(
             `\`${qp.name}\` must be an integer.`,
           ),
         };
-      variables[qp.name] = Number(v);
+      const n = Number(v);
+      // GraphQL Int is 32-bit; larger values would fail coercion inside the gateway.
+      if (n > 2147483647 || n < -2147483648)
+        return {
+          status: 400,
+          body: apiError(
+            "invalid_parameter",
+            `\`${qp.name}\` is out of range.`,
+          ),
+        };
+      variables[qp.name] = n;
     } else variables[qp.name] = v;
   }
   const include = new Set(
@@ -58,7 +68,9 @@ export async function executeRest(
   const headers = { "x-prism-db-queries": String(dbQueries) };
   const gql = body as Gql;
   if (gql.errors?.length) {
-    const bad = gql.errors.find((e) => e.extensions?.code === "BAD_USER_INPUT");
+    const bad =
+      gql.errors.find((e) => e.extensions?.code === "BAD_USER_INPUT") ??
+      (status === 400 ? gql.errors[0] : undefined);
     return bad
       ? {
           status: 400,
