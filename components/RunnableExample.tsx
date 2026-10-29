@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CodeLines } from "./CodeLines";
+import { sandboxPath, useSandbox } from "./Sandbox";
 
 export const API_KEY_PLACEHOLDER = "<API_KEY>";
 
@@ -43,6 +44,7 @@ export function RunnableExample({
   sdk,
   origin,
 }: Props) {
+  const { demo, stop } = useSandbox();
   const [key, setKey] = useState("");
   useEffect(() => {
     try {
@@ -56,10 +58,19 @@ export function RunnableExample({
   );
   const [result, setResult] = useState<Result | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const requestPath = sandboxPath(currentPath, demo);
+  const requestKey = demo?.key ?? key;
+  const displaySdk = sdk ? sandboxPath(sdk, demo).replaceAll(API_KEY_PLACEHOLDER, demo?.key ?? API_KEY_PLACEHOLDER) : undefined;
+  useEffect(() => {
+    setCurrentPath(path);
+    setNextCursor(null);
+    setResult(null);
+    setState("idle");
+  }, [demo, path]);
 
   const curl = [
-    `curl${method === "POST" ? " -X POST" : ""} "${origin}${currentPath}"`,
-    ...(auth ? [`  -H "Authorization: Bearer ${API_KEY_PLACEHOLDER}"`] : []),
+    `curl${method === "POST" ? " -X POST" : ""} "${origin}${requestPath}"`,
+    ...(auth ? [`  -H "Authorization: Bearer ${demo?.key ?? API_KEY_PLACEHOLDER}"`] : []),
     ...(body
       ? [
           `  -H "Content-Type: application/json"`,
@@ -71,14 +82,14 @@ export function RunnableExample({
   async function call(p: string) {
     // Never send a pasted key to an arbitrary URL through the editable example path.
     if (!p.startsWith("/v1/") && p !== "/graphql")
-      throw new Error("Use an Prism API path.");
+      throw new Error("Use a Prism API path.");
     if (p.includes("\\") || p.startsWith("//"))
-      throw new Error("Use an Prism API path.");
+      throw new Error("Use a Prism API path.");
     const t0 = performance.now();
     const res = await fetch(p, {
       method,
       headers: {
-        ...(auth ? { authorization: `Bearer ${key.trim()}` } : {}),
+        ...(auth ? { authorization: `Bearer ${requestKey.trim()}` } : {}),
         ...(body ? { "content-type": "application/json" } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -87,7 +98,7 @@ export function RunnableExample({
     return { res, text, ms: Math.round(performance.now() - t0) };
   }
 
-  async function run(p = currentPath) {
+  async function run(p = requestPath) {
     setState("running");
     try {
       const statuses: number[] = [];
@@ -126,7 +137,7 @@ export function RunnableExample({
 
   function nextPage() {
     if (!nextCursor) return;
-    const url = new URL(currentPath, "http://x");
+    const url = new URL(requestPath, "http://x");
     url.searchParams.set("after", nextCursor);
     const p = url.pathname + url.search;
     setCurrentPath(p);
@@ -142,7 +153,7 @@ export function RunnableExample({
           <span className="rounded-[6px] bg-accent-light px-2 py-0.5 font-mono font-medium text-accent-ink">
             {method}
           </span>
-          <span className="truncate font-mono text-ink-2">{currentPath}</span>
+          <span className="truncate font-mono text-ink-2">{requestPath}</span>
         </div>
         {sdk && (
           <div
@@ -168,12 +179,12 @@ export function RunnableExample({
       {auth && (
         <div className="space-y-3 border-b border-line px-4 py-3 text-sm">
           <label className="block">
-            Your API key
+            {demo ? "Public sandbox key" : "Your API key"}
             <input
               type="password"
               autoComplete="off"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
+              value={requestKey}
+              onChange={(e) => { if (demo) stop(); setKey(e.target.value); }}
               placeholder="Paste a key from your dashboard"
               className="mt-1 block w-full rounded-lg border border-line bg-bg p-2 font-mono text-xs"
             />
@@ -181,7 +192,7 @@ export function RunnableExample({
           <label className="block">
             Request path
             <input
-              value={currentPath}
+              value={requestPath}
               onChange={(e) => {
                 setCurrentPath(e.target.value);
                 setNextCursor(null);
@@ -192,7 +203,7 @@ export function RunnableExample({
         </div>
       )}
       <pre className="overflow-x-auto bg-bg px-4 py-3.5 text-[12.5px] leading-[1.75]">
-        <CodeLines code={tab === "sdk" && sdk ? sdk : curl} />
+        <CodeLines code={tab === "sdk" && displaySdk ? displaySdk : curl} />
       </pre>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
@@ -204,7 +215,7 @@ export function RunnableExample({
               : result
                 ? `${result.status} in ${result.ms} ms`
                 : auth
-                  ? "Runs against your workspace with your API key"
+                  ? demo ? "Runs against public sample data" : "Runs against your workspace with your API key"
                   : "Runs without a key"}
         </span>
         <div className="flex gap-2">
@@ -220,7 +231,7 @@ export function RunnableExample({
           <button
             type="button"
             onClick={() => run()}
-            disabled={state === "running" || (auth && !key.trim())}
+            disabled={state === "running" || (auth && !requestKey.trim())}
             className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[10px] bg-accent px-3.5 text-[14px] font-medium text-ink transition-colors hover:bg-accent-soft disabled:opacity-60"
           >
             <svg aria-hidden viewBox="0 0 12 12" className="h-3 w-3">

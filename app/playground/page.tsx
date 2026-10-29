@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { printSchema } from "graphql";
 import { schema } from "@/graphql/schema";
 import { Playground } from "@/components/Playground";
+import { SandboxControls } from "@/components/Sandbox";
 
 export const metadata: Metadata = { title: "Playground" };
 
@@ -12,6 +13,7 @@ export default function PlaygroundPage() {
       <p className="mt-3 max-w-[64ch] text-[16px] leading-relaxed text-muted">
         Queries run against the live API. Turn batching off to see the N+1 problem DataLoader removes: watch the database query count.
       </p>
+      <SandboxControls />
       <Playground sdl={printSchema(schema)} />
     </div>
   );

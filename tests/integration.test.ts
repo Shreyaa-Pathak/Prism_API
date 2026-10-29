@@ -21,6 +21,8 @@ import type {
 import { Prism } from "../sdk/prism";
 import { generateSdk } from "../graphql/sdkgen";
 import { sessionHash } from "../lib/session";
+import { provisionSandbox } from "../scripts/provision-sandbox";
+import { describeSandbox } from "../lib/sandbox";
 
 let pg: EmbeddedPostgres | undefined,
   pool: Pool,
@@ -43,6 +45,7 @@ let keyA: string,
   cookieB: string;
 const password = randomBytes(24).toString("hex");
 const sessionSecret = randomBytes(32).toString("hex");
+const sandboxKey = `prism_sandbox_${randomBytes(24).toString("hex")}`;
 async function freePort() {
   const s = createServer();
   s.listen(0, "127.0.0.1");
@@ -108,6 +111,7 @@ async function startServer() {
         SESSION_SECRET: sessionSecret,
         PRISM_PUBLIC_URL: origin,
         ADMIN_TOKEN: randomBytes(32).toString("hex"),
+        PRISM_SANDBOX_KEY: sandboxKey,
         NEXT_TELEMETRY_DISABLED: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -178,6 +182,8 @@ before(
     assert.ok((await pool.query("select to_regclass('prism_migrations') as ledger")).rows[0].ledger);
     assert.equal((await pool.query("select to_regclass('previous_migrations') as ledger")).rows[0].ledger, null);
     store = createPostgresStore(url);
+    await provisionSandbox(pool, sandboxKey);
+    await provisionSandbox(pool, sandboxKey);
     origin = `http://127.0.0.1:${appPort}`;
     await startServer();
     for (const suffix of ["a", "b"]) {
@@ -690,6 +696,45 @@ test("committed SDK matches the current generator", async () => {
     generateSdk().replace("__BASE_URL__", "https://api.example.com"),
   );
 });
+
+test("public sandbox is idempotent, scoped, read-only and uses working resource IDs", async () => {
+  const response = await request("/api/sandbox");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const demo = await response.json();
+  assert.equal(demo.key, sandboxKey);
+  const rows = await pool.query("select count(*)::int as n from projects where workspace_id='wsp_prism_sandbox'");
+  assert.equal(rows.rows[0].n, 3);
+  for (const path of ["/v1/projects?first=2", `/v1/projects/${demo.projectId}`, `/v1/projects/${demo.projectId}/deployments`, `/v1/users/${demo.userId}`, `/v1/deployments/${demo.deploymentId}`])
+    assert.equal((await request(path, { key: demo.key })).status, 200);
+  assert.equal((await request(`/v1/projects/${pa.id}`, { key: demo.key })).status, 404);
+  assert.equal((await request(`/v1/projects/${demo.projectId}`, { key: keyA })).status, 404);
+  assert.equal((await request("/v1/projects", { key: demo.key, method: "POST", body: { name: "Changed" } })).status, 405);
+  assert.equal((await request("/api/workspace", { key: demo.key, method: "POST", body: { name: "Changed", slug: "changed" } })).status, 401);
+  const ownSandbox = newKey(a.workspaceId, "Not public", "sandbox");
+  await store.keys.insert(ownSandbox.record);
+  assert.equal(await describeSandbox(store, ownSandbox.secret), null);
+  await store.keys.revoke(a.workspaceId, ownSandbox.record.id);
+  assert.equal(await describeSandbox(store, undefined), null);
+  assert.equal(await describeSandbox(store, "<placeholder-key-at-least-24-characters>"), null);
+});
+
+test("sandbox demonstrates batching on and off and obeys revocation", async () => {
+  // Reset only this test's sample bucket to keep the demonstration deterministic.
+  await pool.query("delete from rate_buckets where id='key_prism_sandbox'");
+  const query = "{projects{edges{node{name owner{name} deployments(first:2){edges{node{id}}}}}}}";
+  for (const [batch, expected] of [["on", "3"], ["off", "7"]]) {
+    const response = await fetch(`${origin}/graphql`, { method: "POST", headers: { authorization: `Bearer ${sandboxKey}`, "content-type": "application/json", "x-prism-batching": batch }, body: JSON.stringify({ query }) });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-prism-db-queries"), expected);
+    assert.equal((await response.json()).errors, undefined);
+  }
+  await store.keys.revoke("wsp_prism_sandbox", "key_prism_sandbox");
+  assert.equal((await request("/api/sandbox")).status, 503);
+  assert.equal((await request("/v1/projects", { key: sandboxKey })).status, 401);
+  await provisionSandbox(pool, sandboxKey);
+  assert.equal((await request("/api/sandbox")).status, 200);
+});
 test("migrations preserve legacy demo records outside active tables", async () => {
   await pool.query("create schema legacy_test");
   const legacyPool = new Pool({
@@ -729,6 +774,8 @@ test("developer pages and schema/SDK endpoints remain available", async () => {
     "/dashboard",
     "/docs",
     "/playground",
+    "/demo",
+    "/prism-icon.svg",
     "/api/schema",
     "/api/sdk",
   ])

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Nav } from "@/components/Nav";
+import { SandboxProvider } from "@/components/Sandbox";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2">
           Skip to content
         </a>
+        <SandboxProvider>
         <Nav />
         <main id="main">{children}</main>
         <footer className="mt-24 border-t border-line">
@@ -33,6 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </p>
           </div>
         </footer>
+        </SandboxProvider>
       </body>
     </html>
   );

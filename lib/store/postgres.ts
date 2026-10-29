@@ -187,6 +187,16 @@ export function createPostgresStore(connectionString: string): PlatformStore {
       await q("select id from workspaces limit 1");
     },
     close: () => pool.end(),
+    sandbox: {
+      workspaceForKey: async (hash) => {
+        const [row] = await q(
+          `select w.id from workspaces w join api_keys k on k.workspace_id=w.id
+           where w.is_sandbox=true and k.hash=$1 and k.plan='sandbox' and k.revoked_at is null`,
+          [hash],
+        );
+        return row ? String(row.id) : null;
+      },
+    },
     identity: {
       register: (name, email, passwordHash) =>
         transaction(async (client) => {

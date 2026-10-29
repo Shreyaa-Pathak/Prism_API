@@ -4,7 +4,33 @@ The package and deployment name is `prism-api`.
 
 A persistent, multi-user developer API platform built with Next.js, TypeScript, PostgreSQL, GraphQL, and REST. A single GraphQL schema drives REST routes, interactive documentation, and the generated TypeScript SDK.
 
-Each account starts with its own empty workspace. Dashboard identity comes from a database-backed session; API identity comes from a hashed API key attached to that workspace. Normal requests require PostgreSQL and never return shared sample data.
+Each account starts with its own empty workspace. Dashboard identity comes from a database-backed session; API identity comes from a hashed API key attached to that workspace. Requests require PostgreSQL; private workspaces never fall back to shared sample data.
+
+For a portfolio walkthrough, open `/demo`. It explains pagination, resource lookups, batching, and the shared API contract. The optional sandbox uses a separate, explicitly marked workspace; personal accounts remain empty and isolated.
+
+## Public sandbox demo
+
+Set `PRISM_SANDBOX_KEY` in `.env` and your deployment's runtime configuration to a distinct random value of at least 24 characters. This credential is **intentionally public** and must never be a private workspace key. Generate one with `node -e "console.log('prism_sandbox_'+require('node:crypto').randomBytes(24).toString('hex'))"`.
+
+```bash
+npm run db:migrate
+npm run sandbox:setup
+npm run dev
+```
+
+Open `/demo` and click **Try sandbox**. No registration is needed. Docs and the playground use the sample key, and resource examples automatically receive working IDs. Choose **Use my own key** to leave sandbox mode; your personal tab key is not overwritten. Sandbox selection persists in this tab and is revalidated against the server on a reload.
+
+Provisioning creates one dedicated workspace with three projects and nine deployment records. It is transactional and idempotent, does not adopt an ordinary workspace, and creates no usable dashboard login. Re-running with a different key rotates only the sample key. `/api/sandbox` advertises a key only when it belongs to a marked sandbox workspace, has the sandbox plan, is not revoked, and has sample records. Omitting the setting disables discovery. The API still checks revocation on every request. To disable access entirely, revoke `key_prism_sandbox` as well as removing the runtime setting.
+
+Sample reads use the same PostgreSQL repositories, resolvers, authentication, rate limiting, and metering as ordinary reads. Public writes remain disabled. All visitors share a bucket with burst 10 and refill 1/s; 429 responses include `Retry-After`. The public key reveals only synthetic sample data, including an example.test member email. Never add private records to this workspace.
+
+## Portfolio evidence and scope
+
+Prism is a working API platform demonstration, with application-level authentication/rate limiting and direct PostgreSQL access. DataLoader caching lasts for one request. Kubernetes deployment manifests are included; their presence is not evidence of a live Kubernetes deployment. No separate network-edge gateway, distributed resource cache, production traffic volume, developer adoption count, or 42ms p99 is claimed.
+
+The integration suite verifies that the three-project sandbox's nested GraphQL query uses **3 resource queries with batching versus 7 without**. The response's `X-Prism-DB-Queries` counts resource repository calls, excluding authentication, bucket, and telemetry SQL. These are reproducible query counts, not throughput or latency benchmarks. HTTP timings in the UI are measured for individual requests.
+
+For a short walkthrough and deployment steps, see [docs/PORTFOLIO.md](docs/PORTFOLIO.md).
 
 ## Development setup
 
@@ -99,6 +125,7 @@ The key determines ownership; callers do not send a workspace ID. REST reads of 
 | `/dashboard` | Register/sign in, projects, deployments, API keys, and 24-hour usage |
 | `/docs` | Runnable examples with your own key and editable resource IDs |
 | `/playground` | GraphQL editor with your own key and batching toggle |
+| `/demo`, `/api/sandbox` | Guided walkthrough and optional public sandbox discovery |
 | `/graphql` | Shared-schema GraphQL reads |
 | `/v1/projects` | Your workspace's projects |
 | `/v1/projects/:id` | A project accessible to your key |
@@ -135,6 +162,8 @@ npm run lint
 npm test
 npm run build
 npm run schema:check
+npm run test:schema
+npm run demo:schema-check
 npm run sdk:generate
 npm audit --omit=dev
 ```
@@ -143,7 +172,11 @@ Integration tests start a disposable native PostgreSQL cluster and a local Prism
 
 For CI SDK comparison, regenerate with `PRISM_PUBLIC_URL=https://api.example.com` (the checked-in SDK default); configure `baseUrl` when consuming it. CI runs isolation tests, lint, type checks, schema compatibility, SDK consistency, build, and the production dependency audit.
 
-Schema checks use the committed `schema.graphql` snapshot. Without observed traffic, all schema-breaking changes block. To use live traffic, configure the GitHub repository variable `PRISM_URL` and secret `PRISM_ADMIN_TOKEN`; set matching `ADMIN_TOKEN` on the server. `/api/internal/observed-operations` is disabled without a non-placeholder admin token. Observed documents are normalized with string/numeric literals scrubbed; variable values are never saved. The endpoint is admin-only.
+Local schema checks default to the committed `schema.graphql` snapshot. Use `npm run schema:check -- --baseline-ref main` to read that snapshot from a trusted Git revision instead of the working tree. CI requires a baseline revision and uses the PR base SHA or previous push SHA, with full history fetched; a first push bootstraps against the root commit snapshot. The baseline must contain `schema.graphql`; missing revisions/snapshots fail the check. Do not regenerate the baseline in the PR check.
+
+Without observed traffic, all structural schema-breaking changes block. To use live traffic, configure the GitHub repository variable `PRISM_URL` and secret `PRISM_ADMIN_TOKEN`; set matching `ADMIN_TOKEN` on the server. `/api/internal/observed-operations` is disabled without a non-placeholder admin token. Observed documents are normalized with string/numeric literals scrubbed; variable values are never saved. The endpoint is admin-only. Malformed or unavailable configured operation history fails the check; an explicitly valid empty history means no observed queries. Queries last seen exactly 30 days ago are included; older queries are excluded. The gate checks GraphQL document compatibility, not arbitrary resolver behavior or every possible runtime variable value.
+
+`npm run demo:schema-check` demonstrates a blocked removal affecting a recent query, an allowed removal after that query expires from the window, and the conservative fallback, using synthetic operations without a production service. `npm run test:schema` covers these rules, fragments/aliases, required arguments, invalid feeds, and a working snapshot edit that cannot alter a trusted Git baseline.
 
 ## Production deployment and remaining work
 

@@ -7,35 +7,41 @@
  *
  * or with an exported file:  npm run schema:check -- --ops observed.json
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { schema } from "../graphql/schema";
-import { checkSchema, WINDOW_DAYS } from "../graphql/schemaCheck";
+import { checkSchema, parseObserved, WINDOW_DAYS } from "../graphql/schemaCheck";
+import { readSchemaBaseline } from "../graphql/schemaBaseline";
 import type { ObservedOperation } from "../lib/store/types";
 
 async function loadObserved(): Promise<ObservedOperation[] | null> {
   const i = process.argv.indexOf("--ops");
-  if (i > -1) return JSON.parse(readFileSync(process.argv[i + 1], "utf8")).operations;
+  if (i > -1) {
+    if (!process.argv[i + 1]) throw new Error("--ops requires a JSON file path.");
+    return parseObserved(JSON.parse(readFileSync(process.argv[i + 1], "utf8")));
+  }
   const url = process.env.OBSERVED_OPERATIONS_URL;
   if (!url) return null;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${process.env.ADMIN_TOKEN ?? ""}` } });
+  const res = await fetch(url, { headers: { authorization: `Bearer ${process.env.ADMIN_TOKEN ?? ""}` }, signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Could not load observed operations: ${res.status}`);
-  return (await res.json()).operations;
+  return parseObserved(await res.json());
 }
 
 async function main() {
-  if (!existsSync("schema.graphql")) {
-    console.error("schema.graphql snapshot is missing. Run `npm run schema:snapshot` and commit it.");
-    process.exit(1);
-  }
+  const i = process.argv.indexOf("--baseline-ref");
+  const ref = i > -1 ? process.argv[i + 1] : process.env.SCHEMA_BASE_REF;
+  if (i > -1 && !ref) throw new Error("--baseline-ref requires a git revision.");
+  if (process.env.CI && !ref) throw new Error("CI requires SCHEMA_BASE_REF or --baseline-ref pointing to a trusted base revision.");
+  const baseline = readSchemaBaseline(ref);
+  console.log(`Schema baseline: ${ref ?? "local schema.graphql (use --baseline-ref for a trusted revision)"}`);
   const observed = await loadObserved();
-  const result = checkSchema(schema, readFileSync("schema.graphql", "utf8"), observed);
+  const result = checkSchema(schema, baseline, observed);
 
   console.log(`Breaking changes vs snapshot: ${result.breaking.length}`);
   for (const c of result.breaking) console.log(`  - ${c.type}: ${c.description}`);
   if (observed === null) {
     console.log("No observed operations source configured, so every breaking change blocks.");
   } else {
-    console.log(`Operations seen in the last ${WINDOW_DAYS} days: ${observed.length}`);
+    console.log(`Operations seen in the last ${WINDOW_DAYS} days: ${observed.filter((op) => op.lastSeen >= Date.now() - WINDOW_DAYS * 86400000).length}`);
     for (const a of result.affected) {
       console.log(`\n  ✗ operation ${a.hash} (seen ${a.count}×, last ${new Date(a.lastSeen).toISOString()})`);
       for (const e of a.errors) console.log(`      ${e}`);

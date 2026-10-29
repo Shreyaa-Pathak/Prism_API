@@ -3,6 +3,23 @@ import type { ObservedOperation } from "@/lib/store/types";
 
 export const WINDOW_DAYS = 30;
 
+/** Reject incomplete/untrusted history rather than silently treating it as no traffic. */
+export function parseObserved(value: unknown): ObservedOperation[] {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { operations?: unknown }).operations))
+    throw new Error("Operation history must contain an operations array.");
+  const operations = (value as { operations: unknown[] }).operations;
+  for (const operation of operations) {
+    const op = operation as Partial<ObservedOperation> | null;
+    if (!op || typeof op.hash !== "string" || !op.hash || typeof op.document !== "string" ||
+        typeof op.firstSeen !== "number" || !Number.isFinite(op.firstSeen) ||
+        typeof op.lastSeen !== "number" || !Number.isFinite(op.lastSeen) ||
+        op.firstSeen > op.lastSeen || typeof op.count !== "number" || !Number.isInteger(op.count) || op.count < 1)
+      throw new Error("Invalid observed operation record.");
+    parse(op.document);
+  }
+  return operations as ObservedOperation[];
+}
+
 export interface CheckResult {
   breaking: { type: string; description: string }[];
   affected: { hash: string; lastSeen: number; count: number; errors: string[]; document: string }[];

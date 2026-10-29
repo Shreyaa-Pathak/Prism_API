@@ -107,6 +107,9 @@ export interface PlatformStore {
   data(workspaceId: string): DataDb;
   health(): Promise<void>;
   close(): Promise<void>;
+  sandbox: {
+    workspaceForKey(hash: string): Promise<string | null>;
+  };
   identity: {
     register(
       name: string,

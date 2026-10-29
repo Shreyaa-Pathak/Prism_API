@@ -26,6 +26,12 @@ export default async function Home() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
+              href="/demo"
+              className="inline-flex min-h-12 items-center rounded-[12px] bg-ink px-5 text-[15px] font-medium text-surface transition-colors hover:bg-ink-2"
+            >
+              Try the sandbox
+            </Link>
+            <Link
               href="/dashboard"
               className="inline-flex min-h-12 items-center rounded-[12px] border border-accent bg-accent px-5 text-[15px] font-medium transition-colors hover:border-ink"
             >
@@ -107,8 +113,8 @@ export default async function Home() {
             Docs you can run
           </h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-            Every example in the docs executes against your own workspace with
-            your API key. Try a query in the playground with batching on and
+            Run examples with public sample data or your own workspace key.
+            Try a query in the playground with batching on and
             off.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">

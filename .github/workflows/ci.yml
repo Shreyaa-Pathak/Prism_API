@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
@@ -21,10 +22,15 @@ jobs:
           if [ -n "$PRISM_URL" ]; then
             export OBSERVED_OPERATIONS_URL="${PRISM_URL%/}/api/internal/observed-operations"
           fi
+          if [ -z "$SCHEMA_BASE_REF" ] || [[ "$SCHEMA_BASE_REF" =~ ^0+$ ]]; then
+            echo "No previous revision: bootstrap check against the initial commit snapshot."
+            export SCHEMA_BASE_REF="$(git rev-list --max-parents=0 HEAD | head -n 1)"
+          fi
           npm run schema:check
         env:
           PRISM_URL: ${{ vars.PRISM_URL }}
           ADMIN_TOKEN: ${{ secrets.PRISM_ADMIN_TOKEN }}
+          SCHEMA_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
       - name: Generated SDK must be committed and current
         run: npm run sdk:generate && git diff --exit-code sdk/
         env:

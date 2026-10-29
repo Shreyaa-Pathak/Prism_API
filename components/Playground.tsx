@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CodeLines } from "./CodeLines";
+import { useSandbox } from "./Sandbox";
 
 const DEFAULT_QUERY = `query ProjectsWithOwners($first: Int) {
   projects(first: $first) {
@@ -28,6 +29,7 @@ interface Run {
 }
 
 export function Playground({ sdl }: { sdl: string }) {
+  const { demo, stop } = useSandbox();
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [variables, setVariables] = useState('{ "first": 10 }');
   const [key, setKey] = useState("");
@@ -36,6 +38,8 @@ export function Playground({ sdl }: { sdl: string }) {
   const [run, setRun] = useState<Run | null>(null);
   const [varError, setVarError] = useState<string | null>(null);
   const [showSchema, setShowSchema] = useState(false);
+  const requestKey = demo?.key ?? key;
+  useEffect(() => { setRun(null); }, [demo]);
 
   useEffect(() => {
     try {
@@ -62,7 +66,7 @@ export function Playground({ sdl }: { sdl: string }) {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${key.trim()}`,
+          authorization: `Bearer ${requestKey.trim()}`,
           "x-prism-batching": batching ? "on" : "off",
         },
         body: JSON.stringify({ query, variables: vars }),
@@ -160,13 +164,13 @@ export function Playground({ sdl }: { sdl: string }) {
               htmlFor="key"
               className="block border-b border-line px-4 py-2.5 text-[13px] font-medium"
             >
-              API key
+              {demo ? "Public sandbox key" : "API key"}
             </label>
             <input
               type="password"
               id="key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
+              value={requestKey}
+              onChange={(e) => { if (demo) stop(); setKey(e.target.value); }}
               spellCheck={false}
               autoComplete="off"
               className="block w-full bg-bg px-4 py-3 font-mono text-[13px] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
@@ -193,7 +197,7 @@ export function Playground({ sdl }: { sdl: string }) {
           <button
             type="button"
             onClick={execute}
-            disabled={running || !key.trim()}
+            disabled={running || !requestKey.trim()}
             className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-accent px-4 text-[14px] font-medium transition-colors hover:bg-accent-soft disabled:opacity-60"
           >
             <svg aria-hidden viewBox="0 0 12 12" className="h-3 w-3">

@@ -10,6 +10,7 @@ import { PLANS } from "@/lib/ratelimit";
 import { MAX_PAGE } from "@/graphql/pagination";
 import { MAX_DEPTH } from "@/graphql/execute";
 import { getOrigin } from "@/lib/origin";
+import { SandboxControls } from "@/components/Sandbox";
 
 export const metadata: Metadata = { title: "Docs" };
 export const dynamic = "force-dynamic";
@@ -105,11 +106,12 @@ export default async function Docs() {
       </nav>
 
       <div className="min-w-0 max-w-[880px]">
+        <SandboxControls />
         <Section id="quickstart" title="Quickstart">
           <p>
             The API lives at <C>{origin}</C>. GraphQL is served at{" "}
             <C>/graphql</C> and REST under <C>/v1</C>. Examples run against your
-            own workspace. Sign in, create a project, and create a key in the{" "}
+            own workspace or the public sample workspace. Choose Try sandbox above, or sign in, create a project, and create a key in the{" "}
             <a
               className="underline decoration-accent decoration-2 underline-offset-4"
               href="/dashboard"
@@ -121,7 +123,7 @@ export default async function Docs() {
           <p>
             List your projects first. For individual and nested examples,
             replace YOUR_PROJECT_ID, YOUR_USER_ID, or YOUR_DEPLOYMENT_ID in the
-            editable request path with an ID from your workspace.
+            editable request path with an ID from your workspace. Sandbox mode fills these IDs automatically.
           </p>
           <RunnableExample
             origin={origin}
@@ -133,8 +135,8 @@ export default async function Docs() {
         <Section id="authentication" title="Authentication">
           <p>
             Send your key in the <C>Authorization</C> header as a bearer token,
-            or in <C>X-API-Key</C>. Keys are checked at the edge before a
-            request reaches the gateway, and only a SHA-256 hash of each key is
+            or in <C>X-API-Key</C>. Keys are checked by the application gateway before
+            resource queries run, and only a SHA-256 hash of each key is
             stored, so a key is shown once when you create it. Requests without
             a valid key get a 401.
           </p>
@@ -316,7 +318,7 @@ try {
 
         <Section id="errors" title="Errors">
           <p>
-            REST and edge errors share one shape. GraphQL errors follow the
+            REST and gateway errors share one shape. GraphQL errors follow the
             GraphQL spec, with a code in <C>extensions.code</C>.
           </p>
           <CodeBlock
@@ -364,8 +366,8 @@ try {
           <p>
             Every operation the API receives is recorded by its normalized
             document. In CI, <C>npm run schema:check</C> compares the schema
-            with the last released snapshot and validates every operation seen
-            in the last 30 days against the new schema. If a change would break
+            with a trusted base revision. When a live operation source is configured, it validates operations seen
+            in the last 30 days against the new schema. Without traffic history, all structural breaking changes block. If a change would break
             any of them, the build fails. Unused fields can be removed; used
             ones can’t, until clients stop sending them.
           </p>

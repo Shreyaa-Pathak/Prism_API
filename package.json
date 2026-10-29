@@ -11,9 +11,12 @@
     "sdk:generate": "tsx scripts/generate-sdk.ts",
     "schema:snapshot": "tsx scripts/schema-snapshot.ts",
     "schema:check": "tsx scripts/check-schema.ts",
+    "sandbox:setup": "tsx scripts/sandbox-setup.ts",
+    "demo:schema-check": "tsx scripts/demo-schema-check.ts",
     "db:migrate": "tsx scripts/db-setup.ts",
     "db:seed": "tsx scripts/db-seed.ts",
-    "test": "tsx --test --test-concurrency=1 tests/integration.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/schema-check.test.ts tests/integration.test.ts",
+    "test:schema": "tsx --test tests/schema-check.test.ts",
     "lint": "eslint ."
   },
   "dependencies": {
